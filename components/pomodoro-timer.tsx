@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useSession } from "next-auth/react"
 import {
   LucideSettings,
   Play,
@@ -25,11 +26,12 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import FlipClock from "@/components/flip-clock"
 import ReportsDialog from "@/components/reports-dialog"
+import AuthButton from "@/components/auth-button"
 
 type TimerMode = "pomodoro" | "short_break" | "long_break"
 
 interface Task {
-  id: string
+  _id?: string
   title: string
   notes: string
   estPomodoros: number
@@ -56,7 +58,7 @@ interface TimerSettings {
 }
 
 interface Session {
-  id: string
+  _id?: string
   taskId: string | null
   type: TimerMode
   startTime: string
@@ -97,8 +99,11 @@ const DEFAULT_SETTINGS: TimerSettings = {
 }
 
 export default function PomodoroTimer() {
+  const { data: session, status } = useSession()
+
   // Settings state
   const [settings, setSettings] = useState<TimerSettings>(DEFAULT_SETTINGS)
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true)
 
   // Timer state
   const [mode, setMode] = useState<TimerMode>("pomodoro")
@@ -112,59 +117,90 @@ export default function PomodoroTimer() {
   const [showAddTask, setShowAddTask] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [newTask, setNewTask] = useState({ title: "", notes: "", estPomodoros: 1 })
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
   // Sessions for reporting
   const [sessions, setSessions] = useState<Session[]>([])
   const [sessionStartTime, setSessionStartTime] = useState<string | null>(null)
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true)
 
   // Audio references
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null)
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Load data from localStorage on mount
+  // Load user data from API when authenticated
   useEffect(() => {
-    const savedSettings = localStorage.getItem("pomodoroSettings")
-    const savedTasks = localStorage.getItem("pomodoroTasks")
-    const savedSessions = localStorage.getItem("pomodoroSessions")
-    const savedPomodoros = localStorage.getItem("pomodorosCompleted")
-    const savedCurrentTask = localStorage.getItem("currentTaskId")
+    if (status === "authenticated") {
+      loadUserData()
+    } else if (status === "unauthenticated") {
+      setIsLoadingSettings(false)
+      setIsLoadingTasks(false)
+      setIsLoadingSessions(false)
+    }
+  }, [status])
 
-    if (savedSettings) setSettings(JSON.parse(savedSettings))
-    if (savedTasks) setTasks(JSON.parse(savedTasks))
-    if (savedSessions) setSessions(JSON.parse(savedSessions))
-    if (savedPomodoros) setPomodorosCompleted(Number.parseInt(savedPomodoros))
-    if (savedCurrentTask) setCurrentTaskId(savedCurrentTask)
+  const loadUserData = async () => {
+    try {
+      // Load settings
+      const settingsRes = await fetch("/api/settings")
+      if (settingsRes.ok) {
+        const userSettings = await settingsRes.json()
+        setSettings(userSettings)
+      }
+      setIsLoadingSettings(false)
 
-    // Initialize audio
+      // Load tasks
+      const tasksRes = await fetch("/api/tasks")
+      if (tasksRes.ok) {
+        const userTasks = await tasksRes.json()
+        setTasks(userTasks)
+      }
+      setIsLoadingTasks(false)
+
+      // Load sessions
+      const sessionsRes = await fetch("/api/sessions")
+      if (sessionsRes.ok) {
+        const userSessions = await sessionsRes.json()
+        setSessions(userSessions)
+      }
+      setIsLoadingSessions(false)
+
+      // Load stats
+      const statsRes = await fetch("/api/stats")
+      if (statsRes.ok) {
+        const stats = await statsRes.json()
+        setPomodorosCompleted(stats.pomodorosCompleted)
+      }
+    } catch (error) {
+      console.error("Failed to load user data:", error)
+      setIsLoadingSettings(false)
+      setIsLoadingTasks(false)
+      setIsLoadingSessions(false)
+    }
+  }
+
+  // Save settings to API
+  const saveSettings = async (newSettings: TimerSettings) => {
+    setSettings(newSettings)
+    if (status === "authenticated") {
+      try {
+        await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newSettings),
+        })
+      } catch (error) {
+        console.error("Failed to save settings:", error)
+      }
+    }
+  }
+
+  // Initialize audio
+  useEffect(() => {
     alarmAudioRef.current = new Audio("/notification.mp3")
     backgroundAudioRef.current = new Audio()
     backgroundAudioRef.current.loop = true
   }, [])
-
-  // Save data to localStorage
-  useEffect(() => {
-    localStorage.setItem("pomodoroSettings", JSON.stringify(settings))
-  }, [settings])
-
-  useEffect(() => {
-    localStorage.setItem("pomodoroTasks", JSON.stringify(tasks))
-  }, [tasks])
-
-  useEffect(() => {
-    localStorage.setItem("pomodoroSessions", JSON.stringify(sessions))
-  }, [sessions])
-
-  useEffect(() => {
-    localStorage.setItem("pomodorosCompleted", pomodorosCompleted.toString())
-  }, [pomodorosCompleted])
-
-  useEffect(() => {
-    if (currentTaskId) {
-      localStorage.setItem("currentTaskId", currentTaskId)
-    } else {
-      localStorage.removeItem("currentTaskId")
-    }
-  }, [currentTaskId])
 
   // Apply theme
   useEffect(() => {
@@ -218,7 +254,7 @@ export default function PomodoroTimer() {
     document.title = `${formatTime(timeLeft)} - ${modeText}`
 
     return () => {
-      document.title = "Pomodoro Timer"
+      document.title = "Sisyphus Project"
     }
   }, [timeLeft, mode])
 
@@ -238,7 +274,7 @@ export default function PomodoroTimer() {
     }
   }, [settings.pomodoroTime, settings.shortBreakTime, settings.longBreakTime])
 
-  const handleTimerComplete = () => {
+  const handleTimerComplete = async () => {
     // Play alarm sound
     if (alarmAudioRef.current) {
       alarmAudioRef.current.play().catch((e) => console.error("Alarm play failed:", e))
@@ -251,8 +287,7 @@ export default function PomodoroTimer() {
 
     // Save session
     if (sessionStartTime) {
-      const session: Session = {
-        id: Date.now().toString(),
+      const session: Omit<Session, "_id"> = {
         taskId: currentTaskId,
         type: mode,
         startTime: sessionStartTime,
@@ -264,15 +299,35 @@ export default function PomodoroTimer() {
               ? settings.shortBreakTime
               : settings.longBreakTime,
       }
-      setSessions((prev) => [...prev, session])
+
+      if (status === "authenticated") {
+        try {
+          const res = await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(session),
+          })
+          if (res.ok) {
+            const newSession = await res.json()
+            setSessions((prev) => [newSession, ...prev])
+          }
+        } catch (error) {
+          console.error("Failed to save session:", error)
+        }
+      } else {
+        setSessions((prev) => [{ ...session, _id: Date.now().toString() }, ...prev])
+      }
+
       setSessionStartTime(null)
     }
 
     // Update current task's actual pomodoros
     if (mode === "pomodoro" && currentTaskId) {
-      setTasks((prev) =>
-        prev.map((task) => (task.id === currentTaskId ? { ...task, actPomodoros: task.actPomodoros + 1 } : task)),
-      )
+      const task = tasks.find((t) => t._id === currentTaskId)
+      if (task) {
+        const updatedTask = { ...task, actPomodoros: task.actPomodoros + 1 }
+        await updateTask(updatedTask)
+      }
     }
 
     // Determine next mode
@@ -352,10 +407,9 @@ export default function PomodoroTimer() {
   }
 
   // Task management functions
-  const addTask = () => {
+  const addTask = async () => {
     if (newTask.title.trim()) {
-      const task: Task = {
-        id: Date.now().toString(),
+      const task: Omit<Task, "_id"> = {
         title: newTask.title,
         notes: newTask.notes,
         estPomodoros: newTask.estPomodoros,
@@ -363,27 +417,71 @@ export default function PomodoroTimer() {
         isCompleted: false,
         createdAt: new Date().toISOString(),
       }
-      setTasks([...tasks, task])
+
+      if (status === "authenticated") {
+        try {
+          const res = await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(task),
+          })
+          if (res.ok) {
+            const newTaskFromDb = await res.json()
+            setTasks([newTaskFromDb, ...tasks])
+          }
+        } catch (error) {
+          console.error("Failed to create task:", error)
+        }
+      } else {
+        setTasks([{ ...task, _id: Date.now().toString() }, ...tasks])
+      }
+
       setNewTask({ title: "", notes: "", estPomodoros: 1 })
       setShowAddTask(false)
     }
   }
 
-  const updateTask = (task: Task) => {
-    setTasks(tasks.map((t) => (t.id === task.id ? task : t)))
+  const updateTask = async (task: Task) => {
+    setTasks(tasks.map((t) => (t._id === task._id ? task : t)))
     setEditingTask(null)
+
+    if (status === "authenticated" && task._id) {
+      try {
+        await fetch(`/api/tasks/${task._id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(task),
+        })
+      } catch (error) {
+        console.error("Failed to update task:", error)
+      }
+    }
   }
 
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter((t) => t.id !== id))
+  const deleteTask = async (id: string) => {
+    setTasks(tasks.filter((t) => t._id !== id))
     if (currentTaskId === id) setCurrentTaskId(null)
+
+    if (status === "authenticated") {
+      try {
+        await fetch(`/api/tasks/${id}`, {
+          method: "DELETE",
+        })
+      } catch (error) {
+        console.error("Failed to delete task:", error)
+      }
+    }
   }
 
-  const toggleTaskComplete = (id: string) => {
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, isCompleted: !t.isCompleted } : t)))
+  const toggleTaskComplete = async (id: string) => {
+    const task = tasks.find((t) => t._id === id)
+    if (task) {
+      const updatedTask = { ...task, isCompleted: !task.isCompleted }
+      await updateTask(updatedTask)
+    }
   }
 
-  const currentTask = tasks.find((t) => t.id === currentTaskId)
+  const currentTask = tasks.find((t) => t._id === currentTaskId)
   const incompleteTasks = tasks.filter((t) => !t.isCompleted)
   const totalEstPomodoros = incompleteTasks.reduce((sum, t) => sum + t.estPomodoros, 0)
   const totalActPomodoros = incompleteTasks.reduce((sum, t) => sum + t.actPomodoros, 0)
@@ -394,6 +492,33 @@ export default function PomodoroTimer() {
       : mode === "short_break"
         ? settings.shortBreakColor
         : settings.longBreakColor
+
+  if (status === "loading" || isLoadingSettings) {
+    return (
+      <div className="w-full max-w-4xl flex items-center justify-center min-h-[400px]">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="w-full max-w-4xl space-y-6">
+        <Card className="shadow-lg">
+          <CardContent className="p-12 text-center space-y-6">
+            <h2 className="text-3xl font-bold">Welcome to Sisyphus Project</h2>
+            <p className="text-muted-foreground text-lg">A beautiful Pomodoro timer to boost your productivity</p>
+            <div className="pt-4">
+              <AuthButton />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Sign in with Google to save your tasks, settings, and track your progress
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-4xl space-y-6">
@@ -429,7 +554,7 @@ export default function PomodoroTimer() {
                           min={1}
                           step={1}
                           onValueChange={(value) => {
-                            setSettings({ ...settings, pomodoroTime: value[0] })
+                            saveSettings({ ...settings, pomodoroTime: value[0] })
                             if (!isActive) resetTimer()
                           }}
                         />
@@ -442,7 +567,7 @@ export default function PomodoroTimer() {
                           min={1}
                           step={1}
                           onValueChange={(value) => {
-                            setSettings({ ...settings, shortBreakTime: value[0] })
+                            saveSettings({ ...settings, shortBreakTime: value[0] })
                             if (!isActive) resetTimer()
                           }}
                         />
@@ -455,7 +580,7 @@ export default function PomodoroTimer() {
                           min={1}
                           step={1}
                           onValueChange={(value) => {
-                            setSettings({ ...settings, longBreakTime: value[0] })
+                            saveSettings({ ...settings, longBreakTime: value[0] })
                             if (!isActive) resetTimer()
                           }}
                         />
@@ -467,7 +592,7 @@ export default function PomodoroTimer() {
                           max={10}
                           min={2}
                           step={1}
-                          onValueChange={(value) => setSettings({ ...settings, longBreakInterval: value[0] })}
+                          onValueChange={(value) => saveSettings({ ...settings, longBreakInterval: value[0] })}
                         />
                       </div>
                       <div className="flex items-center justify-between">
@@ -475,7 +600,7 @@ export default function PomodoroTimer() {
                         <Switch
                           id="auto-breaks"
                           checked={settings.autoStartBreaks}
-                          onCheckedChange={(checked) => setSettings({ ...settings, autoStartBreaks: checked })}
+                          onCheckedChange={(checked) => saveSettings({ ...settings, autoStartBreaks: checked })}
                         />
                       </div>
                       <div className="flex items-center justify-between">
@@ -483,7 +608,7 @@ export default function PomodoroTimer() {
                         <Switch
                           id="auto-pomodoros"
                           checked={settings.autoStartPomodoros}
-                          onCheckedChange={(checked) => setSettings({ ...settings, autoStartPomodoros: checked })}
+                          onCheckedChange={(checked) => saveSettings({ ...settings, autoStartPomodoros: checked })}
                         />
                       </div>
                     </TabsContent>
@@ -494,7 +619,9 @@ export default function PomodoroTimer() {
                         <Switch
                           id="dark-mode"
                           checked={settings.theme === "dark"}
-                          onCheckedChange={(checked) => setSettings({ ...settings, theme: checked ? "dark" : "light" })}
+                          onCheckedChange={(checked) =>
+                            saveSettings({ ...settings, theme: checked ? "dark" : "light" })
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -504,13 +631,13 @@ export default function PomodoroTimer() {
                             id="pomodoro-color"
                             type="color"
                             value={settings.pomodoroColor}
-                            onChange={(e) => setSettings({ ...settings, pomodoroColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, pomodoroColor: e.target.value })}
                             className="w-20 h-10"
                           />
                           <Input
                             type="text"
                             value={settings.pomodoroColor}
-                            onChange={(e) => setSettings({ ...settings, pomodoroColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, pomodoroColor: e.target.value })}
                             className="flex-1"
                           />
                         </div>
@@ -522,13 +649,13 @@ export default function PomodoroTimer() {
                             id="short-break-color"
                             type="color"
                             value={settings.shortBreakColor}
-                            onChange={(e) => setSettings({ ...settings, shortBreakColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, shortBreakColor: e.target.value })}
                             className="w-20 h-10"
                           />
                           <Input
                             type="text"
                             value={settings.shortBreakColor}
-                            onChange={(e) => setSettings({ ...settings, shortBreakColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, shortBreakColor: e.target.value })}
                             className="flex-1"
                           />
                         </div>
@@ -540,13 +667,13 @@ export default function PomodoroTimer() {
                             id="long-break-color"
                             type="color"
                             value={settings.longBreakColor}
-                            onChange={(e) => setSettings({ ...settings, longBreakColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, longBreakColor: e.target.value })}
                             className="w-20 h-10"
                           />
                           <Input
                             type="text"
                             value={settings.longBreakColor}
-                            onChange={(e) => setSettings({ ...settings, longBreakColor: e.target.value })}
+                            onChange={(e) => saveSettings({ ...settings, longBreakColor: e.target.value })}
                             className="flex-1"
                           />
                         </div>
@@ -558,7 +685,7 @@ export default function PomodoroTimer() {
                         <Label>Alarm Sound</Label>
                         <Select
                           value={settings.alarmSound}
-                          onValueChange={(value) => setSettings({ ...settings, alarmSound: value })}
+                          onValueChange={(value) => saveSettings({ ...settings, alarmSound: value })}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -579,14 +706,14 @@ export default function PomodoroTimer() {
                           max={100}
                           min={0}
                           step={5}
-                          onValueChange={(value) => setSettings({ ...settings, alarmVolume: value[0] })}
+                          onValueChange={(value) => saveSettings({ ...settings, alarmVolume: value[0] })}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Background Sound</Label>
                         <Select
                           value={settings.backgroundSound}
-                          onValueChange={(value) => setSettings({ ...settings, backgroundSound: value })}
+                          onValueChange={(value) => saveSettings({ ...settings, backgroundSound: value })}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -607,13 +734,14 @@ export default function PomodoroTimer() {
                           max={100}
                           min={0}
                           step={5}
-                          onValueChange={(value) => setSettings({ ...settings, backgroundVolume: value[0] })}
+                          onValueChange={(value) => saveSettings({ ...settings, backgroundVolume: value[0] })}
                         />
                       </div>
                     </TabsContent>
                   </Tabs>
                 </DialogContent>
               </Dialog>
+              <AuthButton />
             </div>
           </div>
 
@@ -721,19 +849,21 @@ export default function PomodoroTimer() {
             </div>
           )}
 
-          {tasks.length === 0 ? (
+          {isLoadingTasks ? (
+            <p className="text-center text-gray-500 dark:text-gray-400 py-8">Loading tasks...</p>
+          ) : tasks.length === 0 ? (
             <p className="text-center text-gray-500 dark:text-gray-400 py-8">No tasks yet. Add one to get started!</p>
           ) : (
             <>
               <div className="space-y-2 mb-4">
                 {tasks.map((task) => (
                   <div
-                    key={task.id}
+                    key={task._id}
                     className={`p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                      currentTaskId === task.id ? "border-2 border-orange-500" : ""
+                      currentTaskId === task._id ? "border-2 border-orange-500" : ""
                     } ${task.isCompleted ? "opacity-60" : ""}`}
                   >
-                    {editingTask?.id === task.id ? (
+                    {editingTask?._id === task._id ? (
                       <div className="space-y-2">
                         <Input
                           value={editingTask.title}
@@ -769,14 +899,14 @@ export default function PomodoroTimer() {
                       </div>
                     ) : (
                       <div className="flex items-start gap-3">
-                        <button onClick={() => toggleTaskComplete(task.id)} className="mt-1">
+                        <button onClick={() => toggleTaskComplete(task._id!)} className="mt-1">
                           {task.isCompleted ? (
                             <CheckCircle2 className="h-5 w-5 text-green-500" />
                           ) : (
                             <Circle className="h-5 w-5 text-gray-400" />
                           )}
                         </button>
-                        <div className="flex-1 cursor-pointer" onClick={() => setCurrentTaskId(task.id)}>
+                        <div className="flex-1 cursor-pointer" onClick={() => setCurrentTaskId(task._id!)}>
                           <p className={`font-medium ${task.isCompleted ? "line-through" : ""}`}>{task.title}</p>
                           {task.notes && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{task.notes}</p>}
                           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -787,7 +917,7 @@ export default function PomodoroTimer() {
                           <Button size="icon" variant="ghost" onClick={() => setEditingTask(task)}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => deleteTask(task.id)}>
+                          <Button size="icon" variant="ghost" onClick={() => deleteTask(task._id!)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
