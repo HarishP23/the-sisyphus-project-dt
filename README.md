@@ -10,7 +10,7 @@ A beautiful and highly functional Pomodoro timer web application built with Next
 - 🎨 Fully customizable themes and colors
 - 🔔 Alarm and background sounds
 - 💾 Data persistence with MongoDB
-- 🔐 Google authentication
+- 🔐 Email authentication
 - 📱 Fully responsive design
 
 ## Getting Started
@@ -19,7 +19,6 @@ A beautiful and highly functional Pomodoro timer web application built with Next
 
 - Node.js 18+ installed
 - MongoDB database (MongoDB Atlas recommended)
-- Google OAuth credentials
 
 ### Environment Setup
 
@@ -39,27 +38,7 @@ MONGODB_URI=your_mongodb_connection_string_here
 # NextAuth Configuration
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your_nextauth_secret_here
-
-# Google OAuth
-GOOGLE_CLIENT_ID=your_google_client_id_here
-GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 \`\`\`
-
-### Getting MongoDB URI
-
-1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Create a free cluster
-3. Click "Connect" and get your connection string
-4. Replace `<password>` with your database password
-
-### Getting Google OAuth Credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Enable Google+ API
-4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client ID"
-5. Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-6. Copy Client ID and Client Secret
 
 ### Generate NextAuth Secret
 

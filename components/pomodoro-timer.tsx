@@ -512,7 +512,7 @@ export default function PomodoroTimer() {
               <AuthButton />
             </div>
             <p className="text-sm text-muted-foreground">
-              Sign in with Google to save your tasks, settings, and track your progress
+              Sign in with your email to save your tasks, settings, and track your progress
             </p>
           </CardContent>
         </Card>
