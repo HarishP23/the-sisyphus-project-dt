@@ -274,6 +274,34 @@ export default function PomodoroTimer() {
   }, [isActive, endTime])
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout
+
+    if (isActive && endTime) {
+      // Update title immediately
+      const updateTitle = () => {
+        const now = Date.now()
+        const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
+        const modeText = mode === "pomodoro" ? "Focus Time" : mode === "short_break" ? "Short Break" : "Long Break"
+        document.title = `${formatTime(remaining)} - ${modeText}`
+      }
+
+      updateTitle()
+      // Update every second - this works better in background tabs than requestAnimationFrame
+      intervalId = setInterval(updateTitle, 1000)
+    } else {
+      const modeText = mode === "pomodoro" ? "Focus Time" : mode === "short_break" ? "Short Break" : "Long Break"
+      document.title = `${formatTime(timeLeft)} - ${modeText}`
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+      document.title = "Sisyphus Project"
+    }
+  }, [isActive, endTime, mode, timeLeft])
+
+  useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && isActive && endTime) {
         // Tab became visible - recalculate time left immediately
@@ -294,16 +322,6 @@ export default function PomodoroTimer() {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
   }, [isActive, endTime])
-
-  // Update page title
-  useEffect(() => {
-    const modeText = mode === "pomodoro" ? "Focus Time" : mode === "short_break" ? "Short Break" : "Long Break"
-    document.title = `${formatTime(timeLeft)} - ${modeText}`
-
-    return () => {
-      document.title = "Sisyphus Project"
-    }
-  }, [timeLeft, mode])
 
   // Start session tracking
   useEffect(() => {
