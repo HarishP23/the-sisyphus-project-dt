@@ -32,6 +32,7 @@ type TimerMode = "pomodoro" | "short_break" | "long_break"
 
 interface Task {
   _id?: string
+  projectName: string
   title: string
   notes: string
   estPomodoros: number
@@ -60,6 +61,8 @@ interface TimerSettings {
 interface Session {
   _id?: string
   taskId: string | null
+  projectName: string
+  taskName: string | null
   type: TimerMode
   startTime: string
   endTime: string
@@ -117,8 +120,9 @@ export default function PomodoroTimer() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showAddTask, setShowAddTask] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [newTask, setNewTask] = useState({ title: "", notes: "", estPomodoros: 1 })
+  const [newTask, setNewTask] = useState({ projectName: "No Project", title: "", notes: "", estPomodoros: 1 })
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
+  const [projects, setProjects] = useState<string[]>([])
 
   // Sessions for reporting
   const [sessions, setSessions] = useState<Session[]>([])
@@ -155,6 +159,12 @@ export default function PomodoroTimer() {
       if (tasksRes.ok) {
         const userTasks = await tasksRes.json()
         setTasks(userTasks)
+
+        // Extract unique projects
+        const uniqueProjects = Array.from(
+          new Set(userTasks.map((t: Task) => t.projectName).filter((p: string) => p && p !== "No Project")),
+        )
+        setProjects(uniqueProjects as string[])
       }
       setIsLoadingTasks(false)
 
@@ -300,10 +310,17 @@ export default function PomodoroTimer() {
       backgroundAudioRef.current.pause()
     }
 
+    // Get current task info
+    const currentTask = tasks.find((t) => t._id === currentTaskId)
+    const projectName = currentTask?.projectName || "No Project"
+    const taskName = currentTask?.title || null
+
     // Save session
     if (sessionStartTime) {
       const session: Omit<Session, "_id"> = {
         taskId: currentTaskId,
+        projectName: projectName,
+        taskName: taskName,
         type: mode,
         startTime: sessionStartTime,
         endTime: new Date().toISOString(),
@@ -435,6 +452,7 @@ export default function PomodoroTimer() {
   const addTask = async () => {
     if (newTask.title.trim()) {
       const task: Omit<Task, "_id"> = {
+        projectName: newTask.projectName || "No Project",
         title: newTask.title,
         notes: newTask.notes,
         estPomodoros: newTask.estPomodoros,
@@ -453,6 +471,11 @@ export default function PomodoroTimer() {
           if (res.ok) {
             const newTaskFromDb = await res.json()
             setTasks([newTaskFromDb, ...tasks])
+
+            // Update projects list
+            if (task.projectName && task.projectName !== "No Project" && !projects.includes(task.projectName)) {
+              setProjects([...projects, task.projectName].sort())
+            }
           }
         } catch (error) {
           console.error("Failed to create task:", error)
@@ -461,7 +484,7 @@ export default function PomodoroTimer() {
         setTasks([{ ...task, _id: Date.now().toString() }, ...tasks])
       }
 
-      setNewTask({ title: "", notes: "", estPomodoros: 1 })
+      setNewTask({ projectName: "No Project", title: "", notes: "", estPomodoros: 1 })
       setShowAddTask(false)
     }
   }
@@ -477,6 +500,16 @@ export default function PomodoroTimer() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(task),
         })
+
+        // Update projects list
+        const uniqueProjects = Array.from(
+          new Set(
+            tasks
+              .map((t) => (t._id === task._id ? task.projectName : t.projectName))
+              .filter((p) => p && p !== "No Project"),
+          ),
+        )
+        setProjects(uniqueProjects as string[])
       } catch (error) {
         console.error("Failed to update task:", error)
       }
@@ -788,6 +821,7 @@ export default function PomodoroTimer() {
             <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Current Task</p>
               <p className="font-medium">{currentTask.title}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Project: {currentTask.projectName}</p>
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 Act: {currentTask.actPomodoros} / Est: {currentTask.estPomodoros}
               </p>
@@ -844,6 +878,31 @@ export default function PomodoroTimer() {
 
           {showAddTask && (
             <div className="mb-4 p-4 border rounded-lg space-y-3">
+              <div className="space-y-2">
+                <Label>Project</Label>
+                <Select
+                  value={newTask.projectName}
+                  onValueChange={(value) => setNewTask({ ...newTask, projectName: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="No Project">No Project</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project} value={project}>
+                        {project}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Or type new project name..."
+                  value={newTask.projectName === "No Project" ? "" : newTask.projectName}
+                  onChange={(e) => setNewTask({ ...newTask, projectName: e.target.value || "No Project" })}
+                  className="mt-2"
+                />
+              </div>
               <Input
                 placeholder="Task title"
                 value={newTask.title}
@@ -890,6 +949,16 @@ export default function PomodoroTimer() {
                   >
                     {editingTask?._id === task._id ? (
                       <div className="space-y-2">
+                        <div className="space-y-2">
+                          <Label>Project</Label>
+                          <Input
+                            placeholder="Project name"
+                            value={editingTask.projectName}
+                            onChange={(e) =>
+                              setEditingTask({ ...editingTask, projectName: e.target.value || "No Project" })
+                            }
+                          />
+                        </div>
                         <Input
                           value={editingTask.title}
                           onChange={(e) => setEditingTask({ ...editingTask, title: e.target.value })}
@@ -933,6 +1002,7 @@ export default function PomodoroTimer() {
                         </button>
                         <div className="flex-1 cursor-pointer" onClick={() => setCurrentTaskId(task._id!)}>
                           <p className={`font-medium ${task.isCompleted ? "line-through" : ""}`}>{task.title}</p>
+                          <p className="text-xs text-muted-foreground">{task.projectName}</p>
                           {task.notes && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{task.notes}</p>}
                           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                             Act: {task.actPomodoros} / Est: {task.estPomodoros}
