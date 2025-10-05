@@ -4,6 +4,7 @@ import { ObjectId } from "mongodb"
 export interface Task {
   _id?: ObjectId
   userId: string
+  projectName: string
   title: string
   notes: string
   estPomodoros: number
@@ -44,4 +45,13 @@ export async function deleteTask(taskId: string): Promise<void> {
   const db = client.db("pomodoro")
 
   await db.collection<Task>("tasks").deleteOne({ _id: new ObjectId(taskId) })
+}
+
+export async function getUserProjects(userId: string): Promise<string[]> {
+  const client = await clientPromise
+  const db = client.db("pomodoro")
+
+  const projects = await db.collection<Task>("tasks").distinct("projectName", { userId })
+
+  return projects.filter((p) => p && p !== "No Project").sort()
 }
