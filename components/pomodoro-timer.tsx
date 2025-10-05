@@ -273,6 +273,28 @@ export default function PomodoroTimer() {
     }
   }, [isActive, endTime])
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isActive && endTime) {
+        // Tab became visible - recalculate time left immediately
+        const now = Date.now()
+        const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
+        setTimeLeft(remaining)
+
+        if (remaining === 0) {
+          handleTimerComplete()
+          setEndTime(null)
+        }
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [isActive, endTime])
+
   // Update page title
   useEffect(() => {
     const modeText = mode === "pomodoro" ? "Focus Time" : mode === "short_break" ? "Short Break" : "Long Break"
