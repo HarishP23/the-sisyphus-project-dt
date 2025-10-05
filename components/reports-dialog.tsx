@@ -283,18 +283,18 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
           <BarChart3 className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Reports</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="summary" className="w-full flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="detail">Detail</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="summary" className="space-y-6 mt-6">
+          <TabsContent value="summary" className="space-y-6 mt-6 overflow-y-auto pr-2">
             {/* Activity Summary */}
             <div>
               <h3 className="text-lg font-semibold mb-4">Activity Summary</h3>
@@ -405,7 +405,7 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
                 </div>
               </div>
 
-              <div className="border rounded-lg p-4 mt-4">
+              <div className="border rounded-lg p-4 mt-4 w-full">
                 <ChartContainer
                   config={allProjects.reduce(
                     (acc, project, index) => ({
@@ -420,7 +420,7 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
                   className="h-64 w-full"
                 >
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={getChartData()} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                    <BarChart data={getChartData()} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis
                         dataKey={getXAxisKey()}
@@ -474,7 +474,7 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
             </div>
           </TabsContent>
 
-          <TabsContent value="detail" className="mt-6">
+          <TabsContent value="detail" className="mt-6 overflow-y-auto pr-2">
             <div>
               <h3 className="text-lg font-semibold mb-4">Focus Time Detail</h3>
 
