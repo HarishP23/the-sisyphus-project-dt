@@ -111,6 +111,7 @@ export default function PomodoroTimer() {
   const [isActive, setIsActive] = useState(false)
   const [pomodorosCompleted, setPomodorosCompleted] = useState(0)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
+  const [endTime, setEndTime] = useState<number | null>(null)
 
   // Task management state
   const [tasks, setTasks] = useState<Task[]>([])
@@ -233,20 +234,34 @@ export default function PomodoroTimer() {
 
   // Timer logic
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
+    let animationFrameId: number
 
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prevTime) => prevTime - 1)
-      }, 1000)
-    } else if (isActive && timeLeft === 0) {
-      handleTimerComplete()
+    const updateTimer = () => {
+      if (endTime) {
+        const now = Date.now()
+        const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
+
+        setTimeLeft(remaining)
+
+        if (remaining === 0) {
+          handleTimerComplete()
+          setEndTime(null)
+        } else {
+          animationFrameId = requestAnimationFrame(updateTimer)
+        }
+      }
+    }
+
+    if (isActive && endTime) {
+      animationFrameId = requestAnimationFrame(updateTimer)
     }
 
     return () => {
-      if (interval) clearInterval(interval)
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+      }
     }
-  }, [isActive, timeLeft])
+  }, [isActive, endTime])
 
   // Update page title
   useEffect(() => {
@@ -368,11 +383,19 @@ export default function PomodoroTimer() {
   }
 
   const toggleTimer = () => {
+    if (!isActive) {
+      // Starting the timer
+      setEndTime(Date.now() + timeLeft * 1000)
+    } else {
+      // Pausing the timer
+      setEndTime(null)
+    }
     setIsActive(!isActive)
   }
 
   const resetTimer = () => {
     setIsActive(false)
+    setEndTime(null)
     setTimeLeft(
       mode === "pomodoro"
         ? settings.pomodoroTime * 60
@@ -387,12 +410,14 @@ export default function PomodoroTimer() {
   }
 
   const skipTimer = () => {
+    setEndTime(Date.now())
     setTimeLeft(0)
   }
 
   const switchMode = (newMode: TimerMode) => {
     setMode(newMode)
     setIsActive(false)
+    setEndTime(null)
     const duration =
       newMode === "pomodoro"
         ? settings.pomodoroTime
