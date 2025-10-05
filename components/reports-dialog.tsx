@@ -5,6 +5,8 @@ import { BarChart3, Calendar, Flame, Clock, ChevronLeft, ChevronRight } from "lu
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 interface Session {
   _id?: string
@@ -21,9 +23,14 @@ interface ReportsDialogProps {
   sessions: Session[]
 }
 
+type TimePeriod = "week" | "month" | "year"
+
 export default function ReportsDialog({ sessions }: ReportsDialogProps) {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [detailPage, setDetailPage] = useState(1)
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>("year")
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
+  const [selectedWeek, setSelectedWeek] = useState(0)
   const itemsPerPage = 10
 
   const pomodoroSessions = sessions.filter((s) => s.type === "pomodoro")
@@ -63,6 +70,91 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
     }
 
     return { totalHours, daysAccessed, currentStreak }
+  }, [pomodoroSessions])
+
+  const weeklyData = useMemo(() => {
+    const data: { week: string; hours: number; project: string }[] = []
+    const projectHours: Record<string, Record<string, number>> = {}
+
+    pomodoroSessions.forEach((session) => {
+      const date = new Date(session.startTime)
+      if (date.getFullYear() === selectedYear && date.getMonth() === selectedMonth) {
+        const weekNum = Math.floor(date.getDate() / 7)
+        const weekLabel = `Week ${weekNum + 1}`
+        const project = session.projectName || "No Project"
+
+        if (!projectHours[weekLabel]) projectHours[weekLabel] = {}
+        if (!projectHours[weekLabel][project]) projectHours[weekLabel][project] = 0
+
+        projectHours[weekLabel][project] += session.durationMinutes / 60
+      }
+    })
+
+    // Convert to array format for Recharts
+    Object.entries(projectHours).forEach(([week, projects]) => {
+      Object.entries(projects).forEach(([project, hours]) => {
+        data.push({ week, hours: Number(hours.toFixed(2)), project })
+      })
+    })
+
+    return data
+  }, [pomodoroSessions, selectedYear, selectedMonth])
+
+  const monthlyChartData = useMemo(() => {
+    const projectHours: Record<string, Record<string, number>> = {}
+
+    pomodoroSessions.forEach((session) => {
+      const date = new Date(session.startTime)
+      if (date.getFullYear() === selectedYear) {
+        const month = date.toLocaleString("en-US", { month: "short" })
+        const project = session.projectName || "No Project"
+
+        if (!projectHours[month]) projectHours[month] = {}
+        if (!projectHours[month][project]) projectHours[month][project] = 0
+
+        projectHours[month][project] += session.durationMinutes / 60
+      }
+    })
+
+    // Convert to array format for Recharts
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return months.map((month) => {
+      const monthData: Record<string, any> = { month }
+      const projects = projectHours[month] || {}
+      Object.entries(projects).forEach(([project, hours]) => {
+        monthData[project] = Number(hours.toFixed(2))
+      })
+      return monthData
+    })
+  }, [pomodoroSessions, selectedYear])
+
+  const yearlyData = useMemo(() => {
+    const projectHours: Record<string, Record<string, number>> = {}
+    const years = new Set<number>()
+
+    pomodoroSessions.forEach((session) => {
+      const date = new Date(session.startTime)
+      const year = date.getFullYear().toString()
+      years.add(date.getFullYear())
+      const project = session.projectName || "No Project"
+
+      if (!projectHours[year]) projectHours[year] = {}
+      if (!projectHours[year][project]) projectHours[year][project] = 0
+
+      projectHours[year][project] += session.durationMinutes / 60
+    })
+
+    // Convert to array format for Recharts
+    return Array.from(years)
+      .sort()
+      .map((year) => {
+        const yearData: Record<string, any> = { year: year.toString() }
+        const projects = projectHours[year.toString()] || {}
+        Object.entries(projects).forEach(([project, hours]) => {
+          yearData[project] = Number(hours.toFixed(2))
+        })
+        return yearData
+      })
   }, [pomodoroSessions])
 
   // Calculate monthly data
@@ -115,15 +207,54 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
 
   const totalPages = Math.ceil(pomodoroSessions.length / itemsPerPage)
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ]
 
-  const maxHours = Math.max(
-    ...months.map((month) => {
-      const monthData = monthlyData[month] || {}
-      return Object.values(monthData).reduce((sum, hours) => sum + hours, 0)
-    }),
-    7,
-  )
+  const getChartData = () => {
+    switch (timePeriod) {
+      case "week":
+        return weeklyData
+      case "month":
+        return monthlyChartData
+      case "year":
+        return yearlyData
+      default:
+        return monthlyChartData
+    }
+  }
+
+  const getXAxisKey = () => {
+    switch (timePeriod) {
+      case "week":
+        return "week"
+      case "month":
+        return "month"
+      case "year":
+        return "year"
+      default:
+        return "month"
+    }
+  }
+
+  const projectColors = [
+    "hsl(var(--chart-1))",
+    "hsl(var(--chart-2))",
+    "hsl(var(--chart-3))",
+    "hsl(var(--chart-4))",
+    "hsl(var(--chart-5))",
+  ]
 
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
@@ -194,51 +325,131 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">Focus Hours</h3>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear - 1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm font-medium w-16 text-center">{selectedYear}</span>
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear + 1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1 mr-4">
+                    <Button
+                      variant={timePeriod === "week" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setTimePeriod("week")}
+                    >
+                      Week
+                    </Button>
+                    <Button
+                      variant={timePeriod === "month" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setTimePeriod("month")}
+                    >
+                      Month
+                    </Button>
+                    <Button
+                      variant={timePeriod === "year" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setTimePeriod("year")}
+                    >
+                      Year
+                    </Button>
+                  </div>
+                  {timePeriod === "week" && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (selectedMonth === 0) {
+                            setSelectedMonth(11)
+                            setSelectedYear(selectedYear - 1)
+                          } else {
+                            setSelectedMonth(selectedMonth - 1)
+                          }
+                        }}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-medium w-32 text-center">
+                        {monthNames[selectedMonth]} {selectedYear}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (selectedMonth === 11) {
+                            setSelectedMonth(0)
+                            setSelectedYear(selectedYear + 1)
+                          } else {
+                            setSelectedMonth(selectedMonth + 1)
+                          }
+                        }}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                  {timePeriod === "month" && (
+                    <>
+                      <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear - 1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-medium w-16 text-center">{selectedYear}</span>
+                      <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear + 1)}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Bar Chart */}
               <div className="border rounded-lg p-4">
-                <div className="h-64 flex items-end justify-between gap-2">
-                  {months.map((month) => {
-                    const monthData = monthlyData[month] || {}
-                    const totalHours = Object.values(monthData).reduce((sum, hours) => sum + hours, 0)
-                    const heightPercent = (totalHours / maxHours) * 100
-
-                    return (
-                      <div key={month} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="w-full flex flex-col items-center" style={{ height: "calc(100% - 2rem)" }}>
-                          <div className="w-full flex-1 flex items-end justify-center">
-                            {totalHours > 0 && (
-                              <div
-                                className="w-full bg-pink-300 rounded-t transition-all"
-                                style={{ height: `${heightPercent}%`, maxWidth: "80%" }}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-xs text-muted-foreground">{month}</span>
-                      </div>
-                    )
-                  })}
-                </div>
+                <ChartContainer
+                  config={allProjects.reduce(
+                    (acc, project, index) => ({
+                      ...acc,
+                      [project]: {
+                        label: project,
+                        color: projectColors[index % projectColors.length],
+                      },
+                    }),
+                    {},
+                  )}
+                  className="h-64 w-full"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={getChartData()} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis
+                        dataKey={getXAxisKey()}
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                        tickLine={false}
+                        label={{ value: "Hours", angle: -90, position: "insideLeft", style: { fontSize: 12 } }}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      {allProjects.map((project, index) => (
+                        <Bar
+                          key={project}
+                          dataKey={project}
+                          stackId="a"
+                          fill={projectColors[index % projectColors.length]}
+                          radius={index === allProjects.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
               </div>
 
               {/* Project Legend */}
               <div className="mt-4 space-y-2">
-                {allProjects.map((project) => {
+                {allProjects.map((project, index) => {
                   const total = projectTotals[project] || 0
                   return (
                     <div key={project} className="flex items-center justify-between py-2 border-b last:border-b-0">
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-pink-300 rounded" />
+                        <div
+                          className="w-3 h-3 rounded"
+                          style={{ backgroundColor: projectColors[index % projectColors.length] }}
+                        />
                         <span className="text-sm">{project}</span>
                       </div>
                       <span className="text-sm font-medium">{formatTime(total)}</span>
