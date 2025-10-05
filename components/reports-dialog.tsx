@@ -73,14 +73,15 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
   }, [pomodoroSessions])
 
   const weeklyData = useMemo(() => {
-    const data: { week: string; hours: number; project: string }[] = []
     const projectHours: Record<string, Record<string, number>> = {}
 
     pomodoroSessions.forEach((session) => {
       const date = new Date(session.startTime)
       if (date.getFullYear() === selectedYear && date.getMonth() === selectedMonth) {
-        const weekNum = Math.floor(date.getDate() / 7)
-        const weekLabel = `Week ${weekNum + 1}`
+        // Calculate week number within the month (1-5)
+        const dayOfMonth = date.getDate()
+        const weekNum = Math.ceil(dayOfMonth / 7)
+        const weekLabel = `W${weekNum}`
         const project = session.projectName || "No Project"
 
         if (!projectHours[weekLabel]) projectHours[weekLabel] = {}
@@ -90,14 +91,16 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
       }
     })
 
-    // Convert to array format for Recharts
-    Object.entries(projectHours).forEach(([week, projects]) => {
+    // Ensure all weeks 1-5 are present
+    const weeks = ["W1", "W2", "W3", "W4", "W5"]
+    return weeks.map((week) => {
+      const weekData: Record<string, any> = { week }
+      const projects = projectHours[week] || {}
       Object.entries(projects).forEach(([project, hours]) => {
-        data.push({ week, hours: Number(hours.toFixed(2)), project })
+        weekData[project] = Number(hours.toFixed(2))
       })
+      return weekData
     })
-
-    return data
   }, [pomodoroSessions, selectedYear, selectedMonth])
 
   const monthlyChartData = useMemo(() => {
@@ -322,32 +325,36 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
 
             {/* Focus Hours Chart */}
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Focus Hours</h3>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 mr-4">
-                    <Button
-                      variant={timePeriod === "week" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimePeriod("week")}
-                    >
-                      Week
-                    </Button>
-                    <Button
-                      variant={timePeriod === "month" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimePeriod("month")}
-                    >
-                      Month
-                    </Button>
-                    <Button
-                      variant={timePeriod === "year" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimePeriod("year")}
-                    >
-                      Year
-                    </Button>
-                  </div>
+
+                {/* Time period selector */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant={timePeriod === "week" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setTimePeriod("week")}
+                  >
+                    Week
+                  </Button>
+                  <Button
+                    variant={timePeriod === "month" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setTimePeriod("month")}
+                  >
+                    Month
+                  </Button>
+                  <Button
+                    variant={timePeriod === "year" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setTimePeriod("year")}
+                  >
+                    Year
+                  </Button>
+                </div>
+
+                {/* Navigation controls - only content changes based on time period */}
+                <div className="flex items-center justify-center gap-2">
                   {timePeriod === "week" && (
                     <>
                       <Button
@@ -364,7 +371,7 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm font-medium w-32 text-center">
+                      <span className="text-sm font-medium w-40 text-center">
                         {monthNames[selectedMonth]} {selectedYear}
                       </span>
                       <Button
@@ -388,16 +395,17 @@ export default function ReportsDialog({ sessions }: ReportsDialogProps) {
                       <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear - 1)}>
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm font-medium w-16 text-center">{selectedYear}</span>
+                      <span className="text-sm font-medium w-40 text-center">{selectedYear}</span>
                       <Button variant="ghost" size="icon" onClick={() => setSelectedYear(selectedYear + 1)}>
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </>
                   )}
+                  {timePeriod === "year" && <span className="text-sm font-medium w-40 text-center">All Years</span>}
                 </div>
               </div>
 
-              <div className="border rounded-lg p-4">
+              <div className="border rounded-lg p-4 mt-4">
                 <ChartContainer
                   config={allProjects.reduce(
                     (acc, project, index) => ({
