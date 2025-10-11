@@ -3,28 +3,31 @@ import { NextResponse } from "next/server"
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"
 import { updateTask, deleteTask } from "@/lib/db/tasks"
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const updates = await request.json()
+  const raw = await request.json()
+  const { _id, id, ...safeUpdates } = raw ?? {}
 
-  await updateTask(params.id, updates)
+  const { id: taskId } = await params
+  await updateTask(taskId, safeUpdates)
 
   return NextResponse.json({ success: true })
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  await deleteTask(params.id)
+  const { id } = await params
+  await deleteTask(id)
 
   return NextResponse.json({ success: true })
 }
