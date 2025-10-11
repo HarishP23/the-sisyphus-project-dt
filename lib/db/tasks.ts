@@ -37,7 +37,10 @@ export async function updateTask(taskId: string, updates: Partial<Task>): Promis
   const client = await clientPromise
   const db = client.db("pomodoro")
 
-  await db.collection<Task>("tasks").updateOne({ _id: new ObjectId(taskId) }, { $set: updates })
+  // Strip immutable and server-managed fields before $set
+  const { _id, ...safeUpdates } = (updates || {}) as any
+
+  await db.collection<Task>("tasks").updateOne({ _id: new ObjectId(taskId) }, { $set: safeUpdates })
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
